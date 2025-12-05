@@ -1,73 +1,82 @@
-"""
-Defines the Sensor class for planar detector elements.
-"""
+# sensor.py
 import numpy as np
-from typing import List, Optional, Tuple
-from .particle import Particle
-from .hit import Hit
+from dataclasses import dataclass
+from typing import List, Optional
+
+# Type checking import to avoid circular dependency
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .particle import Particle
+
+@dataclass
+class Hit:
+    """Single electron hit measurement on a sensor."""
+    hit_id: int
+    sensor_id: int
+    particle_id: int
+    
+    # Measured (Data)
+    x: float
+    y: float
+    z: float
+    time: float
+    
+    # Truth (MC)
+    x_true: float
+    y_true: float
+    z_true: float
 
 class Sensor:
-
-    """
-    Represents a planar detector sensor with resolution 25μm.
-    
-    A sensor is a flat detector plane at a fixed z-position that records
-    the (x, y) position of particles passing through it.
-    
-    Attributes:
-        id (int): Sensor identifier
-        z_position (float): Z-coordinate of sensor plane in meters
-        resolution (float): Spatial resolution (Gaussian σ) in meters
-        x_range (Tuple[float, float]): Active area x-limits in meters
-        y_range (Tuple[float, float]): Active area y-limits in meters
-        hits (List[Hit]): All hits recorded by this sensor
-    """
-
-    def __init__(self, sensor_id: int, z_position:float , resolution: float = 25e-6, area:Tuple[float,float] = (1.0, 1.0)):
-
-        """
-        Initialize a sensor.
-        
-        Args:
-            sensor_id: Unique identifier for this sensor
-            z_position: Distance from source in meters
-            resolution: Spatial resolution (1σ) in meters (default: 25 μm)
-            area: Active area (width_x, width_y) in meters (default: 1m × 1m)
-        """
-
+    def __init__(self, sensor_id: int, z_position: float, width: float = 1.0, height: float = 1.0, 
+                 resolution: float = 25e-6):
         self.id = sensor_id
         self.z_position = z_position
-        self.resolution = resolution # in meters
-        # Define area centered at (0,0)
-        self.x_range = (-area[0]/2, area[0]/2)
-        self.y_range = (-area[1]/2, area[1]/2)
-        self.hits : List[Hit] = []
+        self.half_width = width / 2
+        self.half_height = height / 2  # FIXED typo 'heigh'
+        self.resolution = resolution
+        
+        self.hits: List[Hit] = []
+        self._hit_counter = 0 
 
-    def detect_hit(self, particle: Particle) -> Optional[Hit]:
-        """
-        Detect if a particle hits this sensor and record the measurement.
-        
-        The particle trajectory is propagated to the sensor's z-position.
-        If it falls within the active area, a hit is recorded with
-        Gaussian measurement noise applied.
-        
-        Args:
-            particle: The particle to check
-            
-        Returns:
-            Hit object if detected, None otherwise
-        """
-        particle_position = particle.propagate(self.z_position)
-        if (self.x_range[0] <= particle_position[0] <= self.x_range[1] and
-            self.y_range[0] <= particle_position[1] <= self.y_range[1]):
-            # Add noise from resolution
-            x_measured = particle_position[0] + np.random.normal(0, self.resolution)
-            y_measured = particle_position[1] + np.random.normal(0, self.resolution)
-            hit = Hit(sensor_id = self.id, z=self.z_position, y=y_measured, x=x_measured)
-            self.hits.append(hit)
-            return hit
-        return None 
-    
-    def clear_hits(self):
-        '''Clears all recorded hits'''
+    def clear(self):
         self.hits = []
+        self._hit_counter = 0 
+
+    def detect_hit(self, particle: "Particle", b_field_z: float = 0) -> Optional[Hit]:
+        # 1. Propagate
+        particle_position = particle.propagation_to_z(self.z_position, b_field_z)
+        
+        if particle_position is None:
+            return None
+        
+        x_true, y_true, z_true = particle_position
+
+        # 2. Check Area (FIXED typo 'halff_height')
+        if (-self.half_width <= x_true <= self.half_width and
+            -self.half_height <= y_true <= self.half_height):
+            
+            # 3. Smear
+            x_measured = x_true + np.random.normal(0, self.resolution)
+            y_measured = y_true + np.random.normal(0, self.resolution)
+
+            new_hit = Hit(
+                hit_id = self._hit_counter,
+                sensor_id = self.id,
+                particle_id = particle.id,
+                x = x_measured,
+                y = y_measured,
+                z = self.z_position,
+                time = particle.time,
+                x_true = x_true,
+                y_true = y_true,
+                z_true = z_true
+            )
+
+            # FIXED: append 'new_hit', not 'hit'
+            self.hits.append(new_hit)
+            self._hit_counter += 1
+            particle.true_hits.append(new_hit)
+            
+            return new_hit
+            
+        return None

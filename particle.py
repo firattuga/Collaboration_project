@@ -1,68 +1,92 @@
-
-'''Defines the Particle class and generates a random direction for the particle.
-
-Attributes:
-    id (int): Unique identifier for the particle.
-    origin (np.ndarray): The starting position of the particle in 3D space in meters (always assumed to be 0,0,0).
-    direction (np.ndarray): The (unit) direction vector of the particle in 3D space.
-    true_hits (List[Hit]): List of true hits associated with the particle.
-'''
-
+# particle.py
 import numpy as np
-from typing import List
+from typing import List, Optional
 import math
-from .hit import Hit
+
+# Use TYPE_CHECKING to avoid circular import with sensor.py
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .sensor import Hit
+
+# --- CONSTANTS ---
+c = 0.299792458 
+
+PARTICLE_DB = {
+    "electron": (-1, 0.000511),
+    "muon":     (-1, 0.10566),
+    "pion":     ( 1, 0.13957),
+    "proton":   ( 1, 0.93827),
+    "alpha":    ( 2, 3.7273),
+    "mystery":  (-1, 500.0)
+}
 
 class Particle:
-    def __init__(self, particle_id: int, origin: np.ndarray = np.array([0,0,0])):
-        """
-        Initialize a particle with random direction.
-        
-        Args:
-            particle_id: Unique identifier for tracking
-            origin: Starting position (default: origin)
-        """
+    def __init__(self, particle_id: int, charge: float, mass: float,
+                 momentum: np.ndarray, time: float = 0.0):
         self.id = particle_id
-        self.origin = origin
-        self.direction = self.generate_random_direction()
-        self.true_hits : List[Hit] = []
+        self.charge = charge
+        self.mass = mass
+        self.momentum = momentum
+        self.position = np.array([0.0, 0.0, 0.0]) 
+        self.time = time
+        self.true_hits: List['Hit'] = []
 
-    def generate_random_direction(self) -> np.ndarray:
-        """
-        Generate a random direction vector within a cone.
+    def get_energy(self) -> float:
+        p_magnitude = np.linalg.norm(self.momentum)
+        return np.sqrt(p_magnitude**2 + self.mass**2)
         
-        The cone has a maximum opening angle of 30 degrees (π/6 radians)
-        from the z-axis. This models particles from a collimated source.
+    def get_velocity(self) -> np.ndarray:
+        energy = self.get_energy()
+        return (self.momentum / energy) * c 
         
-        Returns:
-            Normalized direction vector [dx, dy, dz]
-        """        
-        theta_max = np.pi / 6
-        #any degree between 0 and theta_max is equally probable
-        theta = np.random.uniform(0, theta_max)
-        phi = np.random.uniform(0, 2 * np.pi)
-        # Convert spherical to Cartesian coordinates
-        direction = np.array([
-            math.sin(theta) * math.cos(phi),
-            math.sin(theta) * math.sin(phi),
-            math.cos(theta)
-        ])
-        #Normalize to ensure unit length (sometimes numerical errors may cause the vector to not be unit length)
-        direction = direction / np.linalg.norm(direction)  
-        return direction
-    
-    def propagate(self, distance: float) -> np.ndarray:
-        """
-        Propagate the particle along its direction for a given distance.
-        
-        Uses straight-line propagation (no magnetic field).
-        Distance is used instead of time since we only care about geometry,
-        not the particle's speed.
-        
-        Args:
-            distance: Distance to propagate in meters
+    def propagation_to_z(self, z_target: float, b_field_z: float = 0) -> Optional[np.ndarray]:
+        delta_z = z_target - self.position[2]
+        v = self.get_velocity()
+
+        # SAFETY CHECK: Avoid division by zero
+        if v[2] == 0 or (delta_z > 0 and v[2] < 0):
+            return None
+
+        dt = delta_z / v[2] 
+
+        if b_field_z == 0:
+            self.position += v * dt
+        else:
+            energy = self.get_energy()
+            omega = (c**2 * b_field_z * self.charge) / energy 
+
+            d_phi = -omega * dt
             
-        Returns:
-            Position [x, y, z] at the given distance
-        """
-        return self.origin + self.direction * distance
+            px, py = self.momentum[0], self.momentum[1]
+            
+            # Rotate Momentum
+            cos_dphi = math.cos(d_phi)
+            sin_dphi = math.sin(d_phi)
+            self.momentum[0] = px * cos_dphi - py * sin_dphi
+            self.momentum[1] = px * sin_dphi + py * cos_dphi
+
+            # Update Position
+            vx, vy = v[0], v[1]
+            dx = (vx * sin_dphi - vy * (1 - cos_dphi)) / omega
+            dy = (vy * sin_dphi + vx * (1 - cos_dphi)) / omega
+            
+            self.position[0] += dx
+            self.position[1] += dy
+            self.position[2] = z_target 
+
+        self.time += dt
+        return self.position # <--- ADDED THIS
+
+def create_random_particle(particle_id: int) -> Particle:
+    name = np.random.choice(list(PARTICLE_DB.keys()))
+    charge, mass = PARTICLE_DB[name]
+    
+    p_mag = np.random.uniform(1.0, 10.0) 
+    theta = np.random.uniform(0, np.pi / 6)
+    phi = np.random.uniform(0, 2 * np.pi)
+    
+    px = p_mag * math.sin(theta) * math.cos(phi)
+    py = p_mag * math.sin(theta) * math.sin(phi)
+    pz = p_mag * math.cos(theta)
+    
+    return Particle(particle_id, charge, mass, np.array([px, py, pz]))
