@@ -1,5 +1,5 @@
 # main.py
-import numpy as np # FIXED typo 'mport'
+import numpy as np 
 import csv
 
 from particle import create_random_particle
