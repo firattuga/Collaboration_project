@@ -5,9 +5,9 @@ import csv
 from particle import create_random_particle
 from sensor import Sensor 
 
-num_events = 1000
+num_events = 10
 avg_particles = 5
-avg_noise_hits = 10
+avg_noise_hits = 5
 b_field_z = 2.0  
 output_file = "hits.csv"
 
@@ -38,7 +38,7 @@ with open(output_file, mode="w", newline="") as csvfile:
                     writer.writerow([
                         event_id,
                         hit.sensor_id,
-                        hit.hit_id,
+                        hit.hit_id, # Is HitID assumed to be unknown when doing reconstruction?
                         f"{hit.x:.6f}",
                         f"{hit.y:.6f}",
                         f"{hit.z:.4f}",
@@ -68,4 +68,10 @@ with open(output_file, mode="w", newline="") as csvfile:
             sensor.clear()
 
 print(f"Simulation complete. Hits saved to {output_file}")
+
+
+
+    # =================================================================
+    #                           reconstruction
+    # =================================================================
             
