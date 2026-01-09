@@ -1,14 +1,18 @@
 # main.py
 import numpy as np 
 import csv
+import matplotlib; matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
 
 from particle import create_random_particle
-from sensor import Sensor 
+from sensor import Sensor
+import track_reconstruction as reco
+import plotting
 
 num_events = 10
 avg_particles = 5
 avg_noise_hits = 5
-b_field_z = 2.0  
+b_field_z = 2.0
 output_file = "hits.csv"
 
 # Setup Sensors
@@ -74,4 +78,30 @@ print(f"Simulation complete. Hits saved to {output_file}")
     # =================================================================
     #                           reconstruction
     # =================================================================
-            
+
+
+# Reconstruction of hits and calculation of particle trajectories
+tracks = reco.reconstruct_hits(csv_path=output_file, Bz=b_field_z, dz=0.1)
+print(f"Reconstructed hits: {len(tracks)}")
+trajectories = {
+    eid: reco.backtrack_particle_trajectory(track, Bz=b_field_z, t_min=0.0)
+    for eid, track in tracks.items()
+}
+hits = {
+    eid: [(h[1], h[2], h[3]) for h in track["path"]]
+    for eid, track in tracks.items()
+}
+
+# Plotting and animating detector hits and particle trajectories
+plotting.plot_hits_xy_merged(tracks, source=(0.0, 0.0))
+plotting.plot_hits_xy_sensorwise(tracks)
+
+hits_animation=plotting.animate_hits_by_time(tracks, dt=1,interval=100)
+#hits_animation.save('hits_animation.gif', writer = 'pillow', fps = 10)
+plt.show()
+
+plotting.plot_trajectories_3d(trajectories, hits)
+
+trajectories_animation=plotting.animate_trajectories_3d(trajectories, hits)
+#trajectories_animation.save('trajectories_animation.gif', writer = 'pillow', fps = 10)
+plt.show()
