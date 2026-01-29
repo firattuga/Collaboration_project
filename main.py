@@ -78,10 +78,8 @@ print(f"Simulation complete. Hits saved to {output_file}")
     # =================================================================
     #                           reconstruction
     # =================================================================
-
-
 # Reconstruction of hits and calculation of particle trajectories
-tracks = reco.reconstruct_hits(csv_path=output_file, Bz=b_field_z, dz=0.1)
+tracks = reco.reconstruct_hits(csv_path=output_file, Bz=b_field_z)
 print(f"Reconstructed hits: {len(tracks)}")
 trajectories = {
     eid: reco.backtrack_particle_trajectory(track, Bz=b_field_z, t_min=0.0)
