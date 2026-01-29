@@ -8,9 +8,6 @@ from track_filter import RecoTrackFilter
 def reconstruct_hits(
     csv_path: str,
     Bz: float,
-    dz: float,
-    dz_tol: float = 1e-6,
-    dt_tol: float = 1e-3,
     max_err: float = 1e-2
 ):
     """
@@ -26,13 +23,8 @@ def reconstruct_hits(
     tracks = {}
 
     for event_id, hits in reco.events.items():
-        # Generate all candidate paths
-        paths = reco.gen_paths(hits)
-
         # Physics filter
-        good_paths = reco.f_dzdt(
-            paths, dz=dz, dz_tol=dz_tol, dt_tol=dt_tol
-        )
+        good_paths = reco.gen_paths_phys(hits)
 
         best = None
         best_err = np.inf
@@ -45,7 +37,8 @@ def reconstruct_hits(
 
             if fit["err"] < best_err and fit["err"] < max_err:
                 best_err = fit["err"]
-                best = {"path": path, "fit": fit}
+                filtered_path = [h for h in path if h is not None]
+                best = {"path": filtered_path, "fit": fit}
 
         if best is not None:
             tracks[event_id] = best
@@ -85,6 +78,7 @@ def backtrack_particle_trajectory(
     # --------------------------------------------------
     # Extract hits
     # --------------------------------------------------
+   
     xs = np.array([h[1] for h in path])
     ys = np.array([h[2] for h in path])
     zs = np.array([h[3] for h in path])
@@ -120,3 +114,41 @@ def backtrack_particle_trajectory(
     z = z0 + vz * t_vals
 
     return np.column_stack([x, y, z])
+
+
+
+# ----------------------------------------------------------
+# 2. Characterise each particle by m/q
+# ----------------------------------------------------------
+
+def get_mq(reco: "RecoTrackFilter", B: float) -> dict:
+    """
+    Compute relativistic m/q for each path in each event.
+
+    Parameters
+    ----------
+    reco : RecoTrackFilter
+        Initialized track filter with loaded events
+    B : float
+        Magnetic field along z (Tesla or compatible units)
+
+    Returns
+    -------
+    mq_all : dict
+        Dictionary mapping event_id -> list of m/q values for each path
+    """
+    mq_all = {}
+
+    for event_id, hits in reco.events.items():
+        paths = reco.gen_paths_phys(hits)
+        mq_list = []
+
+        for path in paths:
+            fit = reco.fit_mq(path, B)
+            if fit is not None:
+                mq_list.append(fit["m_over_q"])
+
+        if mq_list:  # only store if there is at least one valid path
+            mq_all[event_id] = mq_list
+
+    return mq_all
