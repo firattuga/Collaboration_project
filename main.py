@@ -1,7 +1,8 @@
 # main.py
 import numpy as np 
 import csv
-import matplotlib; matplotlib.use('TkAgg')
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 from particle import create_random_particle
@@ -14,6 +15,7 @@ avg_particles = 5
 avg_noise_hits = 5
 b_field_z = 2.0
 output_file = "hits.csv"
+particle_id = 0
 
 # Setup Sensors
 sensors = []
@@ -26,14 +28,14 @@ print("Starting simulation...")
 
 with open(output_file, mode="w", newline="") as csvfile:
     writer = csv.writer(csvfile)
-    writer.writerow(["EventID", "SensorID", "HitID", "x_measured", "y_measured", "z_nominal", "time_ns"])
+    writer.writerow(["EventID", "SensorID", "HitID", "x_measured", "y_measured", "z_nominal", "time_ns","ParticleID", "m_over_q"])
 
     for event_id in range(num_events):
         
         # 1. Signal Loop
         n_particles = np.random.poisson(avg_particles)
         for i in range(n_particles):
-            particle = create_random_particle(particle_id=i)
+            particle = create_random_particle(particle_id=i+particle_id)
             
             # FIXED Indentation here
             for sensor in sensors:
@@ -46,9 +48,11 @@ with open(output_file, mode="w", newline="") as csvfile:
                         f"{hit.x:.6f}",
                         f"{hit.y:.6f}",
                         f"{hit.z:.4f}",
-                        f"{hit.time:.4f}"
+                        f"{hit.time:.4f}",
+                        particle.id, # only added for further analysis
+                        particle.mass/particle.charge
                     ])
-
+        particle_id += n_particles
         # 2. Noise Loop
         for sensor in sensors:
             n_noise = np.random.poisson(avg_noise_hits)
@@ -64,7 +68,9 @@ with open(output_file, mode="w", newline="") as csvfile:
                     f"{noise_x:.6f}",
                     f"{noise_y:.6f}",
                     f"{sensor.z_position:.4f}",
-                    f"{noise_time:.4f}"
+                    f"{noise_time:.4f}",
+                    -1,
+                    -1
                 ])
                 
         # Clear sensors for next event
@@ -73,21 +79,20 @@ with open(output_file, mode="w", newline="") as csvfile:
 
 print(f"Simulation complete. Hits saved to {output_file}")
 
-
-
+plotting.plot_measured_hits_xy_sensorwise(output_file)
     # =================================================================
     #                           reconstruction
     # =================================================================
 # Reconstruction of hits and calculation of particle trajectories
 tracks = reco.reconstruct_hits(csv_path=output_file, Bz=b_field_z)
-print(f"Reconstructed hits: {len(tracks)}")
+
 trajectories = {
-    eid: reco.backtrack_particle_trajectory(track, Bz=b_field_z, t_min=0.0)
-    for eid, track in tracks.items()
+    rid: reco.backtrack_particle_trajectory(track, Bz=b_field_z, t_min=0.0)
+    for rid, track in tracks.items()
 }
 hits = {
-    eid: [(h[1], h[2], h[3]) for h in track["path"]]
-    for eid, track in tracks.items()
+    rid: [(h[1], h[2], h[3]) for h in track["path"]]
+    for rid, track in tracks.items()
 }
 
 # Plotting and animating detector hits and particle trajectories

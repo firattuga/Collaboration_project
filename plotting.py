@@ -1,6 +1,8 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib import cm, colors
 
 from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
@@ -63,7 +65,7 @@ def plot_hits_xy_merged(
     ax.set_title("Reconstructed particle tracks (x–y)")
     ax.axis("equal")
     ax.grid(True)
-    ax.legend()
+    fig.legend(bbox_to_anchor=(1.1, 1), loc='upper right',ncols=3,fontsize="xx-small")
 
     plt.tight_layout()
     plt.show()
@@ -136,7 +138,8 @@ def plot_hits_xy_sensorwise(
         ncols=3,
         loc="lower right",
         title="Events",
-        frameon=True
+        frameon=True,
+        fontsize="xx-small"
     )
 
     plt.show()
@@ -159,22 +162,23 @@ def animate_hits_by_time(
     # Assign colors to events
     # ------------------------------------------------------
     event_ids = sorted(tracks.keys())
-    cmap = plt.get_cmap("tab10")   # categorical colormap
+    cmap = plt.get_cmap("tab20") # categorical colormap
 
     event_colors = {
         eid: cmap(i % cmap.N) for i, eid in enumerate(event_ids)
     }
     legend_handles = [
-    Line2D([0], [0], marker="o", linestyle="",
+    Line2D([0], [0], marker=".", linestyle="",
            color=event_colors[eid], label=f"Event {eid}")
     for eid in event_ids
     ]
 
     fig.legend(
         handles=legend_handles,
-        ncols=len(event_ids)//3,
+        ncols=3,
         loc='lower right',
-        frameon=True
+        frameon=True,
+        fontsize="xx-small"
     )
 
     # ------------------------------------------------------
@@ -202,7 +206,7 @@ def animate_hits_by_time(
     # ------------------------------------------------------
     scatters = []
     for i in range(5):
-        sc = axs[i//3][i%3].scatter([], [], s=40)
+        sc = axs[i//3][i%3].scatter([], [], s=20)
         scatters.append(sc)
 
         axs[i//3][i%3].set_title(f"Sensor {i}")
@@ -295,7 +299,7 @@ def plot_trajectories_3d(
     """
 
     event_ids = sorted(trajectories.keys())
-    cmap = plt.get_cmap("tab10")
+    cmap = plt.get_cmap("tab20")
     colors = {eid: cmap(i % cmap.N) for i, eid in enumerate(event_ids)}
 
     fig = plt.figure(figsize=(9, 7))
@@ -338,7 +342,7 @@ def plot_trajectories_3d(
             hx, hy, hz = zip(*hits[eid])
             ax.scatter(
                 hx, hy, hz,
-                s=40,
+                s=20,
                 color=colors[eid]
             )
 
@@ -351,7 +355,7 @@ def plot_trajectories_3d(
     ax.set_zlabel("z [m]")
     ax.set_title("3D reconstructed particle tracks")
 
-    ax.legend()
+    #fig.legend(bbox_to_anchor=(1.1, 1), loc='upper right',ncols=3,fontsize="xx-small")
     ax.set_box_aspect([1, 1, 1.4])
     ax.grid(False)
 
@@ -379,7 +383,7 @@ def animate_trajectories_3d(
     from matplotlib.animation import FuncAnimation
 
     event_ids = sorted(trajectories.keys())
-    cmap = plt.get_cmap("tab10")
+    cmap = plt.get_cmap("tab20")
 
     colors = {eid: cmap(i % cmap.N) for i, eid in enumerate(event_ids)}
     n_frames = min(len(traj) for traj in trajectories.values())
@@ -417,7 +421,7 @@ def animate_trajectories_3d(
 
     for eid in event_ids:
         for (x, y, z) in hits.get(eid, []):
-            sc = ax.scatter([], [], [], s=35, color=colors[eid])
+            sc = ax.scatter([], [], [], s=20, color=colors[eid])
             hit_scatters[eid].append({
                 "x": x,
                 "y": y,
@@ -433,12 +437,12 @@ def animate_trajectories_3d(
 
     for eid in event_ids:
         line, = ax.plot([], [], [], lw=2, color=colors[eid], label=f"Event {eid}")
-        marker = ax.scatter([], [], [], s=70, color=colors[eid])
+        marker = ax.scatter([], [], [], s=20, color=colors[eid])
 
         lines[eid] = line
         markers[eid] = marker
 
-    ax.legend()
+    #fig.legend(bbox_to_anchor=(1.1, 1), loc='upper right',ncols=3,fontsize="xx-small")
 
     # --------------------------------------------------
     # Animation callbacks
@@ -491,3 +495,92 @@ def animate_trajectories_3d(
 
     return anim
 
+def plot_measured_hits_xy_sensorwise(
+    csv_path: str,
+    show_sensors=True
+):
+    """
+    Plot measured hits from hits.csv in the x–y plane,
+    one subplot per sensor, event-agnostic.
+    """
+
+    df = pd.read_csv(csv_path)
+
+    fig, axs = plt.subplots(
+        nrows=2,
+        ncols=3,
+        figsize=(20, 12),
+        constrained_layout=True
+    )
+
+    # --------------------------------------------------
+    # Plot hits per sensor
+    # --------------------------------------------------
+    for sid in range(5):
+        ax = axs[sid // 3][sid % 3]
+
+        df_s = df[df["SensorID"] == sid]
+        df_noise = df_s[df_s["HitID"] == -1]
+        df_signal = df_s[df_s["HitID"] != -1]
+
+        ax.scatter(
+            df_signal["x_measured"],
+            df_signal["y_measured"],
+            s=30,
+            alpha=0.7
+        )
+
+        ax.scatter(
+            df_noise["x_measured"],
+            df_noise["y_measured"],
+            s=30,
+            alpha=0.2,
+            color="red"
+        )
+
+        ax.set_title(f"Sensor {sid}")
+        ax.set_xlabel("x")
+        ax.set_ylabel("y")
+        ax.axis("equal")
+        ax.grid(True)
+
+        #ax.set_xlim(-0.55, 0.55)
+        #ax.set_ylim(-0.55, 0.55)
+
+        if show_sensors:
+            square = patches.Rectangle(
+                (-0.5, -0.5), 1, 1,
+                edgecolor="orange",
+                facecolor="none"
+            )
+            ax.add_patch(square)
+
+        from matplotlib.lines import Line2D
+
+    legend_handles = [
+        Line2D([0], [0],
+               marker='o',
+               color='w',
+               markerfacecolor='C0',
+               markersize=8,
+               alpha=0.7,
+               label='Signal'),
+        Line2D([0], [0],
+               marker='o',
+               color='w',
+               markerfacecolor='red',
+               markersize=8,
+               alpha=0.2,
+               label='Noise')
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="lower right",
+        title="Hit type",
+        frameon=True
+    )
+
+    # Remove unused subplot
+    axs[1][2].remove()
+
+    plt.show()
