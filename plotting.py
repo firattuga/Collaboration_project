@@ -7,21 +7,30 @@ from matplotlib import cm, colors
 from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
 
+cmap = list(cm.get_cmap("tab20").colors) + list(cm.get_cmap("tab20b").colors)+ list(cm.get_cmap("tab20c").colors)
+
 # ----------------------------------------------------------
-# 2. Plot tracks with source and sensors
+# 1. Plot hits with source and sensors
 # ----------------------------------------------------------
+
 def plot_hits_xy_merged(
     tracks: dict,
     source=(0.0, 0.0),
     show_sensors=True
 ):
     """
-    Plot reconstructed tracks in the x–y plane (all sensors merged).
+    Plot reconstructed tracks in the x–y plane (all sensors merged),
+    using distinct colors per particle.
     """
 
     fig, ax = plt.subplots(figsize=(7, 7))
 
-    for event_id, data in tracks.items():
+    # --------------------------------------------------
+    # Plot particles
+    # --------------------------------------------------
+    for idx, (reco_id, data) in enumerate(tracks.items()):
+        color = cmap[idx]
+
         path = data["path"]
         fit = data["fit"]
 
@@ -29,43 +38,46 @@ def plot_hits_xy_merged(
         ys = np.array([h[2] for h in path])
 
         # Hits
-        ax.scatter(xs, ys, s=40, label=f"Event {event_id}")
+        ax.scatter(
+            xs,
+            ys,
+            s=40,
+            color=color,
+            label=str(reco_id)
+        )
 
         # Fitted circle
         xc, yc, R = fit["xc"], fit["yc"], fit["R"]
-        phi = np.linspace(0, 2*np.pi, 400)
+        phi = np.linspace(0, 2 * np.pi, 400)
+
         ax.plot(
             xc + R * np.cos(phi),
             yc + R * np.sin(phi),
             linestyle="--",
-            alpha=0.5
+            color=color,
+            alpha=0.6
         )
 
-    # Sensor outline
+    # Sensors
     if show_sensors:
         square = patches.Rectangle(
             (-0.5, -0.5), 1, 1,
             edgecolor="orange",
-            facecolor="none",
-            label="Sensor"
+            facecolor="none"
         )
         ax.add_patch(square)
 
     # Source
-    ax.scatter(
-        source[0], source[1],
-        marker="*",
-        s=200,
-        c="red",
-        label="Source"
-    )
+    ax.scatter(source[0], source[1], marker="*", s=200, c="red", label="Source")
 
     ax.set_xlabel("x")
     ax.set_ylabel("y")
-    ax.set_title("Reconstructed particle tracks (x–y)")
+    ax.set_title("Reconstructed particle hits (x–y)")
     ax.axis("equal")
     ax.grid(True)
-    fig.legend(bbox_to_anchor=(1.1, 1), loc='upper right',ncols=3,fontsize="xx-small")
+
+    # Global legend
+    fig.legend(title="Particle ID",bbox_to_anchor=(1.02, 1), loc='upper right', ncols=3, fontsize="xx-small")
 
     plt.tight_layout()
     plt.show()
@@ -102,10 +114,11 @@ def plot_hits_xy_sensorwise(
                     xs[mask],
                     ys[mask],
                     s=40,
-                    label=f"Event {event_id}"
+                    label=f"{event_id}",
+                    color=cmap[event_id % len(cmap)]
                 )
 
-                # Save one handle per event (avoid duplicates)
+                # Save one handle per particle (avoid duplicates)
                 if event_id not in legend_handles:
                     legend_handles[event_id] = sc
 
@@ -129,15 +142,13 @@ def plot_hits_xy_sensorwise(
     # Remove unused subplot
     axs[1][2].remove()
 
-    # --------------------------------------------------
     # Global legend
-    # --------------------------------------------------
     fig.legend(
         legend_handles.values(),
-        [f"Event {eid}" for eid in legend_handles.keys()],
+        [f"{eid}" for eid in legend_handles.keys()],
         ncols=3,
         loc="lower right",
-        title="Events",
+        title="Particle ID",
         frameon=True,
         fontsize="xx-small"
     )
@@ -153,7 +164,7 @@ def animate_hits_by_time(
 ):
     """
     Animate detector hits using fixed time bins.
-    Each event ID is shown with a different color.
+    Each particle is shown with a different color.
     """
 
     fig, axs = plt.subplots(nrows=2,ncols=3, figsize=(20, 12))
