@@ -8,9 +8,9 @@ import matplotlib.pyplot as plt
 from particle import create_random_particle
 from sensor import Sensor
 import track_reconstruction as reco
-import plotting
+from pyscripts import plotting
 
-num_events = 10
+num_events = 5
 avg_particles = 5
 avg_noise_hits = 5
 b_field_z = 2.0
@@ -81,7 +81,7 @@ print(f"Simulation complete. Hits saved to {output_file}")
 
 plotting.plot_measured_hits_xy_sensorwise(output_file)
     # =================================================================
-    #                           reconstruction
+    #                           reconstruction and plotting
     # =================================================================
 # Reconstruction of hits and calculation of particle trajectories
 tracks = reco.reconstruct_hits(csv_path=output_file, Bz=b_field_z)
@@ -99,12 +99,12 @@ hits = {
 plotting.plot_hits_xy_merged(tracks, source=(0.0, 0.0))
 plotting.plot_hits_xy_sensorwise(tracks)
 
-hits_animation=plotting.animate_hits_by_time(tracks, dt=1,interval=100)
+hits_animation= plotting.animate_hits_by_time(tracks, dt=1, interval=100)
 #hits_animation.save('hits_animation.gif', writer = 'pillow', fps = 10)
 plt.show()
 
 plotting.plot_trajectories_3d(trajectories, hits)
 
-trajectories_animation=plotting.animate_trajectories_3d(trajectories, hits)
+trajectories_animation= plotting.animate_trajectories_3d(trajectories, hits)
 #trajectories_animation.save('trajectories_animation.gif', writer = 'pillow', fps = 10)
 plt.show()

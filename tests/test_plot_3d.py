@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-from plotting import (
+from pyscripts.plotting import (
     plot_trajectories_3d,
     animate_trajectories_3d,
 )

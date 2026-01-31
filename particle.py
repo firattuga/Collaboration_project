@@ -57,9 +57,9 @@ class Particle:
         return np.sqrt(p_magnitude**2 + self.mass**2)
         
     def get_velocity(self) -> np.ndarray:
-        """Return relativistic velocity vector v = (p / E) * c."""
+        """Return relativistic velocity vector v = (p / E) * c^2."""
         energy = self.get_energy()
-        return (self.momentum / energy) * c 
+        return (self.momentum / energy) * c**2
         
     def propagation_to_z(self, z_target: float, b_field_z: float = 0) -> Optional[np.ndarray]:
         """

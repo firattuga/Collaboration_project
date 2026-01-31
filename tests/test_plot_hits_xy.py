@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from plotting import plot_hits_xy_merged, plot_hits_xy_sensorwise
+from pyscripts.plotting import plot_hits_xy_merged, plot_hits_xy_sensorwise
 
 
 def test_plot_hits_xy_merged_runs(dummy_tracks):

@@ -1,6 +1,6 @@
 import pandas as pd
 import tempfile
-from plotting import plot_measured_hits_xy_sensorwise
+from pyscripts.plotting import plot_measured_hits_xy_sensorwise
 
 
 def test_plot_measured_hits_xy_sensorwise_runs():
