@@ -5,63 +5,108 @@ from track_filter import RecoTrackFilter
 # ----------------------------------------------------------
 # 1. Reconstruct individual particle tracks
 # ----------------------------------------------------------
-
 def reconstruct_hits(
     csv_path: str,
     Bz: float,
-    max_err: float = 1e-2
+    max_err: float = 1e-2,
+    source_tol: float = 0.01,
+    n_backtrack: int = 200
 ):
     """
-    Reconstruct all valid particle tracks per event.
+    Reconstruct all valid particle tracks per event, discarding tracks
+    that do not originate from the source (0,0,0) based on backtracked trajectory.
 
-    Returns:
-        tracks: dict[reconstructed_id] -> dict with keys:
-            - event_id: event ID
-            - path: list of hits
-            - fit : output of fit_mq
+    Parameters
+    ----------
+    csv_path : str
+        Path to the hits CSV file.
+    Bz : float
+        Magnetic field along z (T).
+    max_err : float, optional
+        Maximum allowed fit error for a valid track.
+    source_tol : float, optional
+        Maximum distance from the origin for a particle to be considered originating from the source.
+    n_backtrack : int, optional
+        Number of points to generate when backtracking particle trajectory.
+
+    Returns
+    -------
+    tracks : dict
+        Dictionary of reconstructed tracks:
+            reconstructed_id -> dict with keys:
+                - event_id: original event ID
+                - path: list of hits
+                - fit: output of fit_mq
+
+    data : pd.DataFrame
+        Contains reconstructed particle properties:
+            Reconstructed ID | EventID | SensorID | x | y | t | mq
     """
 
     reco = RecoTrackFilter(csv_path)
     tracks = {}
-    reconstructed_id=0
-    rids, eids, sid, x, y, z,t, mqs = [],[], [], [], [], [], [], []
+    reconstructed_id = 0
+
+    # CSV storage
+    rids, eids, sids, xs, ys, ts, mqs = [], [], [], [], [], [], []
 
     for event_id, hits in reco.events.items():
 
-        # Generate physics-valid candidate paths
-        good_paths = reco.gen_paths_phys(hits)
+        candidate_paths = reco.gen_paths_phys(hits)
 
-        for path in good_paths:
+        for path in candidate_paths:
             fit = reco.fit_mq(path, B=Bz)
-            if fit is None:
-                continue
-
-            if fit["err"] >= max_err:
+            if fit is None or fit["err"] >= max_err:
                 continue
 
             filtered_path = [h for h in path if h is not None]
+            if len(filtered_path) == 0:
+                continue
+
+            # --------------------------------------------------
+            # Backtrack particle to check origin
+            # --------------------------------------------------
+            track_dict = {"path": filtered_path, "fit": fit}
+            traj = backtrack_particle_trajectory(track_dict, Bz, t_min=0.0, n_points=n_backtrack)
+            start_point = traj[0]  # first point in backtracked trajectory
+
+            if np.linalg.norm(start_point) > source_tol:
+                continue  # discard particle not originating from source
+
+            # Save hits for CSV
             for hit in filtered_path:
                 rids.append(reconstructed_id)
                 eids.append(event_id)
-                sid.append(hit[0])
-                x.append(hit[1])
-                y.append(hit[2])
-                t.append(hit[4])
+                sids.append(hit[0])
+                xs.append(hit[1])
+                ys.append(hit[2])
+                ts.append(hit[4])
                 mqs.append(fit["m_over_q"])
 
+            # Save reconstructed track
             tracks[reconstructed_id] = {
                 "event_id": event_id,
                 "path": filtered_path,
                 "fit": fit
             }
-            reconstructed_id+=1
 
-    data=pd.DataFrame({'Reconstructed ID':rids,'EventID':eids,'SensorID':sid,'x':x,'y':y,'t':t,'mq':mqs})
-    data.set_index('Reconstructed ID',inplace=True)
-    data.to_csv('reconstructed_hits.csv')
-    print(f"Reconstructed hits saved to reconstructed_hits.csv")
-    return tracks
+            reconstructed_id += 1
 
+    # --------------------------------------------------
+    # Save CSV
+    # --------------------------------------------------
+    data = pd.DataFrame({
+        "Reconstructed ID": rids,
+        "EventID": eids,
+        "SensorID": sids,
+        "x": xs,
+        "y": ys,
+        "t": ts,
+        "mq": mqs
+    })
+    data.set_index("Reconstructed ID", inplace=True)
+
+    return tracks, data
 
 
 def backtrack_particle_trajectory(

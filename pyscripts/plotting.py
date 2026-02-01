@@ -7,7 +7,7 @@ from matplotlib import cm, colors
 from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
 
-cmap = list(cm.get_cmap("tab20").colors) + list(cm.get_cmap("tab20b").colors)+ list(cm.get_cmap("tab20c").colors)
+cmap = list(plt.get_cmap("tab20").colors) + list(plt.get_cmap("tab20b").colors)+ list(plt.get_cmap("tab20c").colors)
 
 # ----------------------------------------------------------
 # 1. Plot hits with source and sensors
@@ -21,15 +21,14 @@ def plot_hits_xy_merged(
     """
     Plot reconstructed tracks in the x–y plane (all sensors merged),
     using distinct colors per particle.
+    Returns fig, ax for testing.
     """
 
     fig, ax = plt.subplots(figsize=(7, 7))
 
-    # --------------------------------------------------
     # Plot particles
-    # --------------------------------------------------
     for idx, (reco_id, data) in enumerate(tracks.items()):
-        color = cmap[idx]
+        color = cmap[idx % len(cmap)]
 
         path = data["path"]
         fit = data["fit"]
@@ -37,59 +36,73 @@ def plot_hits_xy_merged(
         xs = np.array([h[1] for h in path])
         ys = np.array([h[2] for h in path])
 
-        # Hits
-        ax.scatter(
-            xs,
-            ys,
-            s=40,
-            color=color,
-            label=str(reco_id)
-        )
+        ax.scatter(xs, ys, s=40, color=color, label=str(reco_id))
 
-        # Fitted circle
         xc, yc, R = fit["xc"], fit["yc"], fit["R"]
         phi = np.linspace(0, 2 * np.pi, 400)
+        ax.plot(xc + R * np.cos(phi), yc + R * np.sin(phi),
+                linestyle="--", color=color, alpha=0.6)
 
-        ax.plot(
-            xc + R * np.cos(phi),
-            yc + R * np.sin(phi),
-            linestyle="--",
-            color=color,
-            alpha=0.6
-        )
-
-    # Sensors
     if show_sensors:
-        square = patches.Rectangle(
-            (-0.5, -0.5), 1, 1,
-            edgecolor="orange",
-            facecolor="none"
-        )
+        square = patches.Rectangle((-0.5, -0.5), 1, 1,
+                                   edgecolor="orange",
+                                   facecolor="none")
         ax.add_patch(square)
 
-    # Source
     ax.scatter(source[0], source[1], marker="*", s=200, c="red", label="Source")
-
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_title("Reconstructed particle hits (x–y)")
     ax.axis("equal")
     ax.grid(True)
 
-    # Global legend
-    fig.legend(title="Particle ID",bbox_to_anchor=(1.02, 1), loc='upper right', ncols=3, fontsize="xx-small")
+    fig.legend(title="Particle ID", bbox_to_anchor=(1.02, 1), loc='upper right',
+               ncols=3, fontsize="xx-small")
 
     plt.tight_layout()
-    plt.show()
+
+    return fig, ax
+
 
 
 def plot_hits_xy_sensorwise(
         tracks: dict,
-        show_sensors=True
+        show_sensors: bool = True
 ):
     """
-    Plot reconstructed hits in the x–y plane, one subplot per sensor,
-    with a single global legend.
+    Plot reconstructed particle hits in the x–y plane, separated by sensor.
+
+    This function creates a fixed 2×3 grid of subplots (one per sensor,
+    with one unused panel removed) and overlays reconstructed hit positions
+    for all particles. Each particle is drawn with a unique color across
+    all sensors, and a single global legend maps colors to particle IDs.
+
+    Parameters
+    ----------
+    tracks : dict
+        Dictionary of reconstructed particles indexed by particle (or
+        reconstruction) ID. Each entry must contain:
+            - "path": list of hits, where each hit is a tuple
+              (sensor_id, x, y, z, time).
+    show_sensors : bool, optional
+        If True, draw the 1×1 m sensor outline centered at (0, 0)
+        on each subplot. Default is True.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The Matplotlib figure object containing all subplots.
+    axs : numpy.ndarray of matplotlib.axes.Axes
+        Array of axes corresponding to the sensor subplots
+        (shape 2×3, with the last axis removed).
+
+    Notes
+    -----
+    - Sensor indices are assumed to run from 0 to 4.
+    - Colors are assigned per particle and remain consistent across sensors.
+    - The global legend shows particle IDs only once, avoiding duplicates.
+    - This function does not call `plt.show()` to allow flexible use
+      in scripts, notebooks, and automated tests.
     """
 
     fig, axs = plt.subplots(
@@ -100,7 +113,7 @@ def plot_hits_xy_sensorwise(
 
     legend_handles = {}
 
-    for event_id, data in tracks.items():
+    for reconstructed_id, data in tracks.items():
         path = data["path"]
 
         sids = np.array([h[0] for h in path])
@@ -114,13 +127,13 @@ def plot_hits_xy_sensorwise(
                     xs[mask],
                     ys[mask],
                     s=40,
-                    label=f"{event_id}",
-                    color=cmap[event_id % len(cmap)]
+                    label=f"{reconstructed_id}",
+                    color=cmap[reconstructed_id % len(cmap)]
                 )
 
                 # Save one handle per particle (avoid duplicates)
-                if event_id not in legend_handles:
-                    legend_handles[event_id] = sc
+                if reconstructed_id not in legend_handles:
+                    legend_handles[reconstructed_id] = sc
 
     # Sensor outlines and styling
     for i in range(5):
@@ -145,7 +158,7 @@ def plot_hits_xy_sensorwise(
     # Global legend
     fig.legend(
         legend_handles.values(),
-        [f"{eid}" for eid in legend_handles.keys()],
+        [f"{rid}" for rid in legend_handles.keys()],
         ncols=3,
         loc="lower right",
         title="Particle ID",
@@ -153,18 +166,57 @@ def plot_hits_xy_sensorwise(
         fontsize="xx-small"
     )
 
-    plt.show()
+    return fig, axs
 
 
 def animate_hits_by_time(
     tracks: dict,
-    dt=1,         # ns
-    interval=100,
-    show_sensors=True
+    dt: float = 1,
+    interval: int = 100,
+    show_sensors: bool = True
 ):
     """
-    Animate detector hits using fixed time bins.
-    Each particle is shown with a different color.
+    Animate reconstructed detector hits in the x–y plane as a function of time.
+
+    This function creates a sensor-wise animation (2×3 subplot grid, one
+    subplot per sensor) in which reconstructed particle hits appear once
+    their hit time is reached. Each particle is assigned a unique, consistent
+    color across all sensors. A single global legend maps colors to particle IDs.
+
+    Hits accumulate over time: once a hit appears, it remains visible for
+    all subsequent frames.
+
+    Parameters
+    ----------
+    tracks : dict
+        Dictionary of reconstructed particles indexed by particle (or
+        reconstruction) ID. Each entry must contain:
+            - "path": list of hits, where each hit is a tuple
+              (sensor_id, x, y, z, time).
+    dt : float, optional
+        Time step between animation frames in nanoseconds.
+        Default is 1 ns.
+    interval : int, optional
+        Delay between animation frames in milliseconds.
+        Default is 100 ms.
+    show_sensors : bool, optional
+        If True, draw the 1×1 m sensor outline centered at (0, 0)
+        on each subplot. Default is True.
+
+    Returns
+    -------
+    anim : matplotlib.animation.FuncAnimation
+        Matplotlib animation object. The caller is responsible for keeping
+        a reference to this object and either displaying it with `plt.show()`
+        or saving it using `anim.save()`.
+
+    Notes
+    -----
+    - Sensor indices are assumed to run from 0 to 4.
+    - The animation uses fixed time bins defined by `dt`.
+    - Hits are revealed when `hit_time <= current_frame_time`.
+    - This function does not call `plt.show()` to remain compatible with
+      scripts, notebooks, and automated testing environments.
     """
 
     fig, axs = plt.subplots(nrows=2,ncols=3, figsize=(20, 12))
@@ -172,16 +224,16 @@ def animate_hits_by_time(
     # ------------------------------------------------------
     # Assign colors to events
     # ------------------------------------------------------
-    event_ids = sorted(tracks.keys())
+    reconstructed_ids = sorted(tracks.keys())
     cmap = plt.get_cmap("tab20") # categorical colormap
 
-    event_colors = {
-        eid: cmap(i % cmap.N) for i, eid in enumerate(event_ids)
+    particle_colors = {
+        rid: cmap(i % cmap.N) for i, rid in enumerate(reconstructed_ids)
     }
     legend_handles = [
     Line2D([0], [0], marker=".", linestyle="",
-           color=event_colors[eid], label=f"Event {eid}")
-    for eid in event_ids
+           color=particle_colors[rid], label=f"{rid}")
+    for rid in reconstructed_ids
     ]
 
     fig.legend(
@@ -189,17 +241,18 @@ def animate_hits_by_time(
         ncols=3,
         loc='lower right',
         frameon=True,
-        fontsize="xx-small"
+        fontsize="xx-small",
+        title="Particle ID"
     )
 
     # ------------------------------------------------------
-    # Collect all hits (KEEP event_id)
+    # Collect all hits (KEEP reconstructed_id)
     # ------------------------------------------------------
     hits = []
-    for event_id, data in tracks.items():
+    for reconstructed_id, data in tracks.items():
         for h in data["path"]:
             hits.append({
-                "event": event_id,
+                "ID": reconstructed_id,
                 "sid": h[0],
                 "x": h[1],
                 "y": h[2],
@@ -250,7 +303,7 @@ def animate_hits_by_time(
                 if h["sid"] == i and h["t"] <= t_now:
                     xs.append(h["x"])
                     ys.append(h["y"])
-                    cs.append(event_colors[h["event"]])
+                    cs.append(particle_colors[h["ID"]])
 
             if xs:
                 scatters[i].set_offsets(np.column_stack([xs, ys]))
@@ -273,15 +326,54 @@ def animate_hits_by_time(
     )
 
     plt.tight_layout()
-    #plt.show()
 
     return anim
 
 
 def draw_detector_plane(ax, z, size=1.0, color="orange", alpha=0.15):
     """
-    Draw a square detector plane centered at (0,0) at given z.
+    Draw a square detector plane in 3D space.
+
+    The detector plane is centered at (x=0, y=0) and lies in a plane of
+    constant z. It is rendered both as an outline and as a semi-transparent
+    filled surface.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes._subplots.Axes3DSubplot
+        A Matplotlib 3D axis object on which the detector plane is drawn.
+
+    z : float
+        z-coordinate of the detector plane.
+
+    size : float, optional
+        Side length of the square detector plane (in the same units as x and y).
+        Default is 1.0.
+
+    color : str or tuple, optional
+        Color used to draw the detector outline and surface.
+        Default is "orange".
+
+    alpha : float, optional
+        Transparency of the filled detector surface.
+        Must be between 0 (fully transparent) and 1 (fully opaque).
+        Default is 0.15.
+
+    Notes
+    -----
+    - The detector plane is centered at (0, 0, z).
+    - The outline is drawn using `ax.plot`, while the filled surface is drawn
+      using `ax.plot_trisurf`.
+    - This function does not modify axis limits or aspect ratios.
+
+    Examples
+    --------
+    >>> fig = plt.figure()
+    >>> ax = fig.add_subplot(111, projection="3d")
+    >>> draw_detector_plane(ax, z=1.2, size=1.0)
+    >>> plt.show()
     """
+
     half = size / 2
 
     x = [-half, half, half, -half, -half]
@@ -299,19 +391,32 @@ def plot_trajectories_3d(
     hits: dict
 ):
     """
-    Plot 3D particle trajectories, detector hits, source and detector planes.
+    Plot reconstructed 3D particle trajectories together with detector hits,
+    the particle source, and detector planes.
 
     Parameters
     ----------
     trajectories : dict
-        event_id -> (N,3) array of particle positions
+        particle_id -> array_like of shape (N, 3)
+        Reconstructed particle trajectories.
+
     hits : dict
-        event_id -> list of (x,y,z) detector hits
+        particle_id -> list of (x, y, z)
+        Detector hits associated with each particle.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The Matplotlib figure containing the 3D plot.
     """
 
-    event_ids = sorted(trajectories.keys())
-    cmap = plt.get_cmap("tab20")
-    colors = {eid: cmap(i % cmap.N) for i, eid in enumerate(event_ids)}
+    particle_ids = sorted(trajectories.keys())
+
+    # Use GLOBAL categorical colormap
+    colors = {
+        pid: cmap[i % len(cmap)]
+        for i, pid in enumerate(particle_ids)
+    }
 
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection="3d")
@@ -339,39 +444,39 @@ def plot_trajectories_3d(
     # --------------------------------------------------
     # Trajectories + hits
     # --------------------------------------------------
-    for eid in event_ids:
-        traj = trajectories[eid]
+    for pid in particle_ids:
+        traj = np.asarray(trajectories[pid])
         xs, ys, zs = traj[:, 0], traj[:, 1], traj[:, 2]
 
         ax.plot(
             xs, ys, zs,
-            color=colors[eid],
-            label=f"Event {eid}"
+            color=colors[pid],
+            label=f"{pid}"
         )
 
-        if eid in hits:
-            hx, hy, hz = zip(*hits[eid])
+        if pid in hits and len(hits[pid]) > 0:
+            hx, hy, hz = zip(*hits[pid])
             ax.scatter(
                 hx, hy, hz,
                 s=20,
-                color=colors[eid]
+                color=colors[pid]
             )
 
     # --------------------------------------------------
-    # Labels & styling
+    # Styling
     # --------------------------------------------------
     ax.view_init(20, -120, vertical_axis="y")
     ax.set_xlabel("x [m]")
     ax.set_ylabel("y [m]")
     ax.set_zlabel("z [m]")
-    ax.set_title("3D reconstructed particle tracks")
+    ax.set_title("3D reconstructed particle trajectories")
 
-    #fig.legend(bbox_to_anchor=(1.1, 1), loc='upper right',ncols=3,fontsize="xx-small")
     ax.set_box_aspect([1, 1, 1.4])
     ax.grid(False)
 
     plt.tight_layout()
-    plt.show()
+    return fig
+
 
 def animate_trajectories_3d(
     trajectories: dict,
@@ -380,31 +485,39 @@ def animate_trajectories_3d(
 ):
     """
     Animate 3D particle trajectories using precomputed trajectories.
+    Hits appear when particles cross the detector planes, and disappear
+    when the animation restarts.
 
     Parameters
     ----------
     trajectories : dict
-        event_id -> (N,3) array of particle positions
+        reconstructed_id -> (N,3) array of particle positions
     hits : dict
-        event_id -> list of (x,y,z) detector hits
+        reconstructed_id -> list of (x, y, z) detector hits
     interval : int
-        Frame delay in ms
+        Frame delay in milliseconds
+
+    Returns
+    -------
+    anim : matplotlib.animation.FuncAnimation
+        The animation object.
     """
 
     from matplotlib.animation import FuncAnimation
+    import numpy as np
 
-    event_ids = sorted(trajectories.keys())
-    cmap = plt.get_cmap("tab20")
-
-    colors = {eid: cmap(i % cmap.N) for i, eid in enumerate(event_ids)}
+    reconstructed_ids = sorted(trajectories.keys())
     n_frames = min(len(traj) for traj in trajectories.values())
 
-    # --------------------------------------------------
+    # Use global cmap (tab20 + tab20b + tab20c)
+    global cmap
+    colors = {rid: cmap[i % len(cmap)] for i, rid in enumerate(reconstructed_ids)}
+
+    # -----------------------------
     # Figure setup
-    # --------------------------------------------------
+    # -----------------------------
     fig = plt.figure(figsize=(9, 7))
     ax = fig.add_subplot(111, projection="3d")
-
     ax.set_xlabel("x [m]")
     ax.set_ylabel("y [m]")
     ax.set_zlabel("z [m]")
@@ -412,84 +525,79 @@ def animate_trajectories_3d(
     ax.view_init(20, -120, vertical_axis="y")
     ax.set_box_aspect([1, 1, 1.4])
 
-    # --------------------------------------------------
     # Source
-    # --------------------------------------------------
     ax.scatter(0, 0, 0, c="red", marker="*", s=150, label="Source")
 
-    # --------------------------------------------------
     # Detector planes
-    # --------------------------------------------------
     detector_zs = [1.0, 1.1, 1.2, 1.3, 1.4]
     for i, z in enumerate(detector_zs):
         draw_detector_plane(ax, z)
         ax.text(0.55, 0.55, z, f"D{i}", color="orange")
 
-    # --------------------------------------------------
-    # Prepare hit scatters (hidden initially)
-    # --------------------------------------------------
-    hit_scatters = {eid: [] for eid in event_ids}
+    # -----------------------------
+    # Prepare hit scatters
+    # -----------------------------
+    hit_scatters = {rid: [] for rid in reconstructed_ids}
+    for rid in reconstructed_ids:
+        for (x, y, z) in hits.get(rid, []):
+            sc = ax.scatter([], [], [], s=20, color=colors[rid])
+            hit_scatters[rid].append({"x": x, "y": y, "z": z, "scatter": sc})
 
-    for eid in event_ids:
-        for (x, y, z) in hits.get(eid, []):
-            sc = ax.scatter([], [], [], s=20, color=colors[eid])
-            hit_scatters[eid].append({
-                "x": x,
-                "y": y,
-                "z": z,
-                "scatter": sc
-            })
-
-    # --------------------------------------------------
+    # -----------------------------
     # Track lines + moving markers
-    # --------------------------------------------------
+    # -----------------------------
     lines = {}
     markers = {}
 
-    for eid in event_ids:
-        line, = ax.plot([], [], [], lw=2, color=colors[eid], label=f"Event {eid}")
-        marker = ax.scatter([], [], [], s=20, color=colors[eid])
+    for rid in reconstructed_ids:
+        line, = ax.plot([], [], [], lw=2, color=colors[rid], label=f"{rid}")
+        marker = ax.scatter([], [], [], s=20, color=colors[rid])
+        lines[rid] = line
+        markers[rid] = marker
 
-        lines[eid] = line
-        markers[eid] = marker
-
-    #fig.legend(bbox_to_anchor=(1.1, 1), loc='upper right',ncols=3,fontsize="xx-small")
-
-    # --------------------------------------------------
+    # -----------------------------
     # Animation callbacks
-    # --------------------------------------------------
+    # -----------------------------
     def init():
-        for eid in event_ids:
-            lines[eid].set_data([], [])
-            lines[eid].set_3d_properties([])
-            markers[eid]._offsets3d = ([], [], [])
-        return list(lines.values()) + list(markers.values())
+        # Reset trajectories
+        for rid in reconstructed_ids:
+            lines[rid].set_data([], [])
+            lines[rid].set_3d_properties([])
+            markers[rid]._offsets3d = ([], [], [])
+            # Reset all hits
+            for hit in hit_scatters[rid]:
+                hit["scatter"]._offsets3d = ([], [], [])
+        return list(lines.values()) + list(markers.values()) + [
+            hit["scatter"] for hs in hit_scatters.values() for hit in hs
+        ]
 
     def update(frame):
-        for eid in event_ids:
-            traj = trajectories[eid]
+        for rid in reconstructed_ids:
+            traj = np.asarray(trajectories[rid])
             x, y, z = traj[frame]
 
             # Trail
-            lines[eid].set_data(traj[:frame, 0], traj[:frame, 1])
-            lines[eid].set_3d_properties(traj[:frame, 2])
+            lines[rid].set_data(traj[:frame, 0], traj[:frame, 1])
+            lines[rid].set_3d_properties(traj[:frame, 2])
 
             # Moving particle
-            markers[eid]._offsets3d = ([x], [y], [z])
+            markers[rid]._offsets3d = ([x], [y], [z])
 
             # Reveal hits after crossing
-            for hit in hit_scatters[eid]:
+            for hit in hit_scatters[rid]:
                 if z >= hit["z"]:
                     hit["scatter"]._offsets3d = (
                         [hit["x"]],
                         [hit["y"]],
-                        [hit["z"]]
+                        [hit["z"]],
                     )
+                else:
+                    hit["scatter"]._offsets3d = ([], [], [])
 
         return (
             list(lines.values())
             + list(markers.values())
-            + [h["scatter"] for hs in hit_scatters.values() for h in hs]
+            + [hit["scatter"] for hs in hit_scatters.values() for hit in hs]
         )
 
     anim = FuncAnimation(
@@ -498,30 +606,76 @@ def animate_trajectories_3d(
         frames=n_frames,
         init_func=init,
         interval=interval,
-        blit=False
+        blit=False,
+        repeat=True  # ensures animation loops
     )
 
     plt.tight_layout()
-    #plt.show()
-
     return anim
 
 def plot_measured_hits_xy_sensorwise(
     csv_path: str,
-    show_sensors=True
+    show_sensors: bool = True
 ):
     """
-    Plot measured hits from hits.csv in the x–y plane,
-    one subplot per sensor, event-agnostic.
+    Plot measured detector hits in the x–y plane, grouped by sensor.
+
+    This function reads a CSV file containing measured detector hits and
+    produces a grid of subplots (one per sensor). Signal and noise hits are
+    distinguished visually, independent of any event or particle
+    reconstruction.
+
+    Signal hits are defined as rows with ``HitID != -1``, while noise hits
+    have ``HitID == -1``.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to the CSV file containing measured hits. The file must contain
+        at least the following columns:
+
+        - ``SensorID`` : int
+            Sensor index (expected values: 0–4)
+        - ``HitID`` : int
+            Hit identifier (-1 indicates noise)
+        - ``x_measured`` : float
+            Measured x position
+        - ``y_measured`` : float
+            Measured y position
+
+    show_sensors : bool, optional
+        If True, draw the square sensor outline for each subplot
+        (default: True).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The Matplotlib figure object.
+
+    axs : numpy.ndarray of matplotlib.axes.Axes
+        Array of subplot axes arranged in a 2×3 grid. The last (unused)
+        subplot is removed.
+
+    Notes
+    -----
+    - All sensors are plotted with identical axis limits to allow direct
+      visual comparison.
+    - A single global legend is added to distinguish signal and noise hits.
+    - The plot is event-agnostic and does not require reconstructed tracks.
+
+    Examples
+    --------
+    >>> fig, axs = plot_measured_hits_xy_sensorwise("hits.csv")
+    >>> plt.show()
     """
+
 
     df = pd.read_csv(csv_path)
 
     fig, axs = plt.subplots(
         nrows=2,
         ncols=3,
-        figsize=(20, 12),
-        constrained_layout=True
+        figsize=(20, 12)
     )
 
     # --------------------------------------------------
@@ -552,11 +706,10 @@ def plot_measured_hits_xy_sensorwise(
         ax.set_title(f"Sensor {sid}")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
-        ax.axis("equal")
         ax.grid(True)
 
-        #ax.set_xlim(-0.55, 0.55)
-        #ax.set_ylim(-0.55, 0.55)
+        ax.set_xlim(-0.55, 0.55)
+        ax.set_ylim(-0.55, 0.55)
 
         if show_sensors:
             square = patches.Rectangle(
@@ -594,4 +747,4 @@ def plot_measured_hits_xy_sensorwise(
     # Remove unused subplot
     axs[1][2].remove()
 
-    plt.show()
+    return fig, axs

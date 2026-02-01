@@ -1,6 +1,7 @@
 import pandas as pd
 import tempfile
 from pyscripts.plotting import plot_measured_hits_xy_sensorwise
+import os
 
 
 def test_plot_measured_hits_xy_sensorwise_runs():
@@ -14,6 +15,16 @@ def test_plot_measured_hits_xy_sensorwise_runs():
         "time_ns": [1.0, 2.0, 3.0],
     })
 
-    with tempfile.NamedTemporaryFile(suffix=".csv") as f:
+    with tempfile.NamedTemporaryFile(
+            suffix=".csv",
+            delete=False,
+            mode="w",
+            newline=""
+    ) as f:
         df.to_csv(f.name, index=False)
-        plot_measured_hits_xy_sensorwise(f.name, show_sensors=True)
+        csv_path = f.name
+
+    try:
+        plot_measured_hits_xy_sensorwise(csv_path)
+    finally:
+        os.remove(csv_path)

@@ -18,7 +18,6 @@ def test_plot_trajectories_3d_runs(dummy_trajectories, dummy_hits_3d):
 
     plt.close(fig)
 
-
 def test_animate_trajectories_3d(dummy_trajectories, dummy_hits_3d):
     anim = animate_trajectories_3d(
         dummy_trajectories,

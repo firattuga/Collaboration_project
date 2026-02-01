@@ -1,17 +1,21 @@
 import matplotlib.pyplot as plt
 from pyscripts.plotting import plot_hits_xy_merged, plot_hits_xy_sensorwise
-
+from matplotlib.collections import PathCollection
 
 def test_plot_hits_xy_merged_runs(dummy_tracks):
-    plot_hits_xy_merged(dummy_tracks, show_sensors=True)
+    fig, ax = plot_hits_xy_merged(dummy_tracks, show_sensors=True)
 
-    fig = plt.gcf()
-    ax = fig.axes[0]
+    assert len(fig.axes) == 1
+    assert ax in fig.axes
 
-    # At least one scatter collection
-    assert len(ax.collections) > 0
+    collections = [
+        c for c in ax.collections
+        if isinstance(c, PathCollection)
+    ]
+    assert len(collections) > 0
 
-    plt.close(fig)
+    # Optional: ensure at least one point
+    assert collections[0].get_offsets().shape[0] > 0
 
 
 def test_plot_hits_xy_sensorwise_runs(dummy_tracks):

@@ -15,6 +15,7 @@ avg_particles = 5
 avg_noise_hits = 5
 b_field_z = 2.0
 output_file = "hits.csv"
+reconstruction_file = "reconstructed_hits.csv"
 particle_id = 0
 
 # Setup Sensors
@@ -80,11 +81,14 @@ with open(output_file, mode="w", newline="") as csvfile:
 print(f"Simulation complete. Hits saved to {output_file}")
 
 plotting.plot_measured_hits_xy_sensorwise(output_file)
+plt.show()
     # =================================================================
     #                           reconstruction and plotting
     # =================================================================
 # Reconstruction of hits and calculation of particle trajectories
-tracks = reco.reconstruct_hits(csv_path=output_file, Bz=b_field_z)
+tracks, df = reco.reconstruct_hits(csv_path=output_file, Bz=b_field_z)
+df.to_csv(reconstruction_file)
+print("Reconstructed hits saved to reconstructed_hits.csv")
 
 trajectories = {
     rid: reco.backtrack_particle_trajectory(track, Bz=b_field_z, t_min=0.0)
@@ -97,13 +101,16 @@ hits = {
 
 # Plotting and animating detector hits and particle trajectories
 plotting.plot_hits_xy_merged(tracks, source=(0.0, 0.0))
+plt.show()
 plotting.plot_hits_xy_sensorwise(tracks)
+plt.show()
 
 hits_animation= plotting.animate_hits_by_time(tracks, dt=1, interval=100)
 #hits_animation.save('hits_animation.gif', writer = 'pillow', fps = 10)
 plt.show()
 
 plotting.plot_trajectories_3d(trajectories, hits)
+plt.show()
 
 trajectories_animation= plotting.animate_trajectories_3d(trajectories, hits)
 #trajectories_animation.save('trajectories_animation.gif', writer = 'pillow', fps = 10)
